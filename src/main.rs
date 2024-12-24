@@ -102,84 +102,113 @@ pub struct MedioPago {
     pub nombre: Option<String>,
 }
 
-
-fn pdf(orden: &IOrder) {
-    // Dimensiones de la página en mm (f64)
-    let page_width: f64 = 80.0;
-    let page_height: f64 = 190.0;
-
-    // Crear PDF
-    let (doc, page, layer) = PdfDocument::new(
-        "Ticket",
-        Mm(page_width as f32),
-        Mm(page_height as f32),
-        "",
-    );
-
-    let font_data: &[u8] = include_bytes!("../assets/fonts/Roboto-Black.ttf") as &[u8];
-    let face: Face<'_> = Face::parse(font_data, 0).expect("No se pudo cargar la fuente");
-
-
-    // (Opcional) Tomar UPEM desde la fuente, por si no es 1000
-    let upem: f64 = face.units_per_em() as f64;
-    let font: IndirectFontRef = doc.add_external_font(font_data).unwrap();
-    // Tamaño de la fuente en pt
-    let font_size: f64 = 24.0;
-
-    // Texto
-    let text: &String = orden.comercio.nombre.as_ref().unwrap();
-
-    texto_centrado(
-        page_width,
-        page_height,
-        doc,
-        font,
-        page,
-        layer,
-        font_size,
-        text,
-        10.0,
-        font_data,
-        face,
-        upem,
-    );
-
-    // Guardar el PDF
-    let mut buffer: BufWriter<File> = BufWriter::new(File::create("test_working.pdf").unwrap());
-    doc.save(&mut buffer).unwrap();
+struct PdfResources<'a> {
+    font: IndirectFontRef,
+    face: Face<'a>,
+    upem: f64,
+    page_width: f64,
+    page_height: f64,
+    doc: PdfDocumentReference,
+    page: PdfPageIndex,
+    layer: PdfLayerIndex,
 }
 
-fn texto_centrado(page_width: f64, page_height: f64, doc: PdfDocumentReference, font:IndirectFontRef, page: PdfPageIndex, layer: PdfLayerIndex, font_size: f64, text: &String, altura: f64, font_data: &[u8], face: Face<'_>, upem: f64) {
+impl<'a> PdfResources<'a> {
+    fn new() -> Self {
+        
+        let page_width = 80.0;
+        let page_height = 190.0;
+        let (
+            doc,
+            page,
+            layer)
+            = PdfDocument::new(
+                "Ticket",
+                Mm(
+                    page_width as f32
+                ), Mm(
+                    page_height as f32
+                ), "");
+        let font_data: &[u8] = include_bytes!("../assets/fonts/Roboto-Black.ttf") as &[u8];
+        let face: Face<'_> = Face::parse(font_data, 0).expect("No se pudo cargar la fuente");
+        let upem: f64 = face.units_per_em() as f64;
+        
+        // let font: IndirectFontRef = doc.add_external_font(font_data).unwrap();
+        let font: IndirectFontRef = doc.add_external_font(font_data)
+    .expect("Failed to add external font. Ensure the font data is correct and file path is valid.");
 
-    let current_layer = doc.get_page(page).get_layer(layer);
-    // Factor de escala para convertir de unidades de fuente a puntos
-    let scale_factor = font_size / upem;
-    // Calcular el ancho del texto en puntos
+        PdfResources {
+            font,
+            face,
+            upem,
+            page_width,
+            page_height,
+            doc,
+            page,
+            layer
+        }
+    }
+}
+
+fn pdf(orden: &IOrder) {
+    
+    let resources = PdfResources::new();
+            
+    let current_layer: PdfLayerReference = resources.doc.get_page(resources.page).get_layer(resources.layer);
+
+    // comercio nombre
+    texto_centrado(
+        &current_layer,
+        24.0,
+        orden.comercio.nombre.as_ref().unwrap(),
+        10.0,
+        &resources,
+    );
+
+    // plataforma nombre
+    texto_centrado(
+        &current_layer,
+        16.0,
+        orden.plataforma.nombre.as_ref().unwrap(),
+        15.0,
+        &resources,
+    );
+
+
+
+    let mut buffer: BufWriter<File> = BufWriter::new(File::create("test_working.pdf").unwrap());
+    resources.doc.save(&mut buffer).unwrap();
+}
+
+fn texto_centrado(
+    current_layer: &PdfLayerReference,
+    font_size: f64,
+    text: &String,
+    altura: f64,
+    resources: &PdfResources) {
+
+    let scale_factor = font_size / resources.upem;
+    
     let text_width_points: f64 = text
         .chars()
-        .filter_map(|c| face.glyph_index(c))
-        .map(|glyph_id| face.glyph_hor_advance(glyph_id).unwrap_or(0) as f64)
-        .sum::<f64>()
-        * scale_factor;
-    // Pasar de puntos (pt) a milímetros (mm)
-    let text_width_mm = text_width_points * 0.352778;
-    // O / 2.83465
-    // Centrar horizontalmente
-    let x_position = (page_width - text_width_mm) / 2.0;
-    let y_position = page_height - altura;
-    // Dibujar texto
+        .filter_map(|c| resources.face.glyph_index(c))
+        .map(|glyph_id| resources.face.glyph_hor_advance(glyph_id).unwrap_or(0) as f64)
+        .sum::<f64>() * scale_factor;
+
+    let text_width_mm: f64 = text_width_points * 0.352778;
+    let x_position: f64 = (resources.page_width - text_width_mm) / 2.0;
+    let y_position: f64 = resources.page_height - altura;
+    println!("{}", text);
     current_layer.use_text(
         text,
-        font_size as f32,          // Mantienes font_size como f64
-        Mm(x_position as f32),     // Mm(...) acepta f64
+        font_size as f32,
+        Mm(x_position as f32),
         Mm(y_position as f32),
-        &font,
+        &resources.font,
     );
-    }
-
+}
 
 fn main() {
-    // Creamos un objeto de ejemplo para la orden:
     let orden_ejemplo = IOrder {
         comentario: Some("Orden de ejemplo".to_string()),
         items: vec![
@@ -241,6 +270,6 @@ fn main() {
         },
     };
 
-    // Llamamos a la función pdf para "generar" (en este ejemplo, imprime) el PDF:
     pdf(&orden_ejemplo);
+    println!("espacio creado")
 }
