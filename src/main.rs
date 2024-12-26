@@ -1,12 +1,17 @@
+
+// extern crate printpdf;
+// use printpdf::Image;
+
 use printpdf::path::{PaintMode, WindingOrder};
 use printpdf::*;
+
+use ::image::codecs::png::PngDecoder;
+use printpdf::Image;
+
 use std::fs::File;
 use std::io::BufWriter;
 use std::convert::From;
-use ::image::ImageReader;
-use ::image::{DynamicImage, ImageError};
-use printpdf::Image;
-
+use std::convert::TryFrom;
 use ttf_parser::Face;
 
 // Convierte al tipo Image de printpdf
@@ -307,75 +312,15 @@ fn line_vert(current_layer: &PdfLayerReference, altura: f64, resources: &PdfReso
 
 fn imagen(
     current_layer: &PdfLayerReference,
-
 ) {
-    // Abre el archivo de imagen PNG
-    fn cargar_imagen(
-        image_path: &str
-    ) -> Result<DynamicImage, ImageError> {
-        let img: DynamicImage = ImageReader::open(image_path)?.decode()?;
-        Ok(img)
-    }
+    let mut image_file: File  = File::open("assets/img/Icon_Moto.png").unwrap();
 
-    let image_path = "assets/img/Icon_Moto.png";
-    let img: Result<DynamicImage, ImageError> = cargar_imagen(image_path);
-    // Convierte al tipo Image de printpdf    
-  
-    // aqui quede
-    // aqui quede
-    // aqui quede
-    // aqui quede
-    // aqui quede    
-    let image = Image::try_from(Image::codecs::bmp::BmpDecoder::new(&mut image_file).unwrap()).unwrap();
-    // aqui quede
-    // aqui quede
-    // aqui quede
-    // aqui quede
-    // aqui quede
-/*
-use printpdf::*;
-
-fn main() {
-    let mut doc = PdfDocument::new("My first PDF");
-    let image_bytes = include_bytes!("assets/img/dog_alpha.png");
-    let image = RawImage::decode_from_bytes(image_bytes).unwrap(); // requires --feature bmp
-
-    // In the PDF, an image is an `XObject`, identified by a unique `ImageId`
-    let image_xobject_id = doc.add_image(&image);
-
-    let page1_contents = vec![Op::UseXObject {
-        id: image_xobject_id.clone(),
-        transform: XObjectTransform::default(),
-    }];
-
-    let page1 = PdfPage::new(Mm(210.0), Mm(297.0), page1_contents);
-    let pdf_bytes: Vec<u8> = doc.with_pages(vec![page1]).save(&PdfSaveOptions::default());
-    let _ = std::fs::write("image.pdf", pdf_bytes);
+    let image: Image = Image::try_from(
+        PngDecoder::new(&mut image_file).unwrap()).unwrap();
 }
-*/
 
-    // image.add_to_layer()
-   
-}
-fn texto(use printpdf::*;
 
-fn main() {
-    let mut doc = PdfDocument::new("My first PDF");
-    let image_bytes = include_bytes!("assets/img/dog_alpha.png");
-    let image = RawImage::decode_from_bytes(image_bytes).unwrap(); // requires --feature bmp
-
-    // In the PDF, an image is an `XObject`, identified by a unique `ImageId`
-    let image_xobject_id = doc.add_image(&image);
-
-    let page1_contents = vec![Op::UseXObject {
-        id: image_xobject_id.clone(),
-        transform: XObjectTransform::default(),
-    }];
-
-    let page1 = PdfPage::new(Mm(210.0), Mm(297.0), page1_contents);
-    let pdf_bytes: Vec<u8> = doc.with_pages(vec![page1]).save(&PdfSaveOptions::default());
-    let _ = std::fs::write("image.pdf", pdf_bytes);
-}
+fn texto(
     current_layer: &PdfLayerReference,
     font_size: f64,
     text: &String,
