@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-printpdf = "0.7"
+printpdf = "0.7.0"
 ttf-parser = "0.25"
-image = "0.23"  
+chrono = "0.4"
