@@ -1,9 +1,8 @@
-// extern crate printpdf;
+
 // use printpdf::Image;
 // use ::image::png::PngDecoder;
 // use ::image::{ImageDecoder, ImageDecoderExt, ImageFormat};
 // use printpdf::path::{PaintMode, WindingOrder};
-use printpdf::*;
 // use ::image::io::Reader as ImageReader;
 // Si necesitas redimensionar la imagen para que coincida con width y height:
 
@@ -12,11 +11,19 @@ use printpdf::*;
 // use ::image::codecs::png::PngDecoder;
 // use printpdf::Image;
 
+// winding_order: WindingOrder::NonZero,
+// mode: PaintMode::FillStroke,
+extern crate printpdf;
+use printpdf::*;
+
+use printpdf::path::{PaintMode, WindingOrder};
 use std::convert::From;
+use std::default;
 use std::fs::File;
 use std::io::BufWriter;
+use std::mem::transmute;
 
-use ttf_parser::Face;
+use ttf_parser::{Face, Transform};
 use chrono::prelude::*;
 
 
@@ -653,22 +660,23 @@ fn imagen(
     
     // Cargar la imagen PNG
     // let image = Image::from_dynamic_image(image::open("ruta_a_imagen.bmp").unwrap());
-    let img = Image::from_dynamic_image(image::open(path_name).unwrap());
+    let img: Image = Image::from_dynamic_image(&image_crate::open(path_name).unwrap());
     // println!("{}", path_name);
     // println!("Dimensiones originales: {}x{}", img.width(), img.height());
     // println!("Dimensiones objetivo: {}x{}", width.0, height.0);
     
 
-    let gray_img = img.into_luma8();
+    // let gray_img = img.into_luma8();
     
     // Crear un nuevo vector con fondo blanco
-    let mut image_data = vec![255u8; width.0 * height.0]; // Inicializar con blanco (255)
+    // let mut image_data = vec![255u8; width.0 * height.0]; // Inicializar con blanco (255)
+    let mut image_data: Vec<u8> = vec![0u8; width.0 * height.0]; // Inicializar con negro (255)
         // Antes de extraer el raw data, guardamos lo necesario.
-    let (_img_width, img_height) = (gray_img.width(), gray_img.height());
-    // Copiar los datos de la imagen original
-    let original_data = gray_img.into_raw();
-    let min_width = std::cmp::min(width.0, original_data.len() / img_height as usize);
-    let min_height = std::cmp::min(height.0, img_height as usize);
+    // let (_img_width, img_height) = (gray_img.width(), gray_img.height());
+    // // Copiar los datos de la imagen original
+    // let original_data = gray_img.into_raw();
+    // let min_width = std::cmp::min(width.0, original_data.len() / img_height as usize);
+    // let min_height = std::cmp::min(height.0, img_height as usize);
 
     // Copiar los datos manteniendo el fondo blanco
     for y in 0..min_height {
@@ -700,14 +708,12 @@ fn imagen(
         dpi: Some(DPI as f32), // Usar los nuevos DPI aquí también
     };
     // Convierte el ImageXObject a un printpdf::Image
-    let image = Image::from(image_x_object);
+    // let image = Image::from(img);
 
-    image.add_to_layer(current_layer.clone(), image_transform);
+    img.add_to_layer(current_layer.clone(), ImageTransform::default());
     
     Ok(())
 }
-
-
 
 /// Dibuja texto en forma de párrafo, con máximo 70mm de ancho por línea.
 fn parrafo(

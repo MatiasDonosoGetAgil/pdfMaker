@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-printpdf = "0.7.0"
+# Habilitamos la feature "embedded_images" directamente en printpdf
+printpdf = { version = "0.7", features = ["embedded_images"] }
+
+# Para decodificar BMP/JPEG/PNG, necesitamos la crate image
+# (puede ser la versión estable que prefieras)
+image = "0.24"
 ttf-parser = "0.25"
 chrono = "0.4"
