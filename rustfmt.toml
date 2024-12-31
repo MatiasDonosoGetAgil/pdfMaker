@@ -1,0 +1,6 @@
+max_width = 80          # Máximo ancho de línea (puedes ajustarlo según prefieras)
+fn_call_width = 40      # Ancho máximo antes de forzar un salto de línea en llamadas a funciones
+single_line_if_else_max_width = 0  # Forzar saltos de línea para evitar if-else en una sola línea
+format_strings = true   # Formatear cadenas largas automáticamente
+indent_style = "Visual" # Usar indentación visual para alineación
+force_multiline_blocks = true # Forzar bloques multilínea en llamadas largas

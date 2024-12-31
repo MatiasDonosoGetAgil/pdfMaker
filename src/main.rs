@@ -1,15 +1,11 @@
 extern crate printpdf;
-use printpdf::path::{PaintMode, WindingOrder};
 use printpdf::*;
+use std::{convert::From, os::linux::raw::stat};
 
-use std::convert::From;
-use std::fs::File;
-use std::io::BufWriter;
-// use std::string;
-// use std::mem::transmute;
-
-use chrono::prelude::*;
-use ttf_parser::Face;
+mod pdf_resources;
+use pdf_resources::{
+    format_clp, format_datetime, set_linea_horizontal, PdfResources,
+};
 
 pub struct IOrder {
     pub comentario: Option<String>,
@@ -111,115 +107,472 @@ pub struct MedioPago {
     pub nombre: Option<String>,
 }
 
-struct PdfResources<'a> {
-    font: IndirectFontRef,
-    face: Face<'a>,
-    upem: f32,
-    font_light: IndirectFontRef,
-    face_light: Face<'a>,
-    upem_light: f32,
-    page_width: f32,
-    page_height: f32,
-    doc: PdfDocumentReference,
-    page: PdfPageIndex,
-    layer: PdfLayerIndex,
-}
-
-impl<'a> PdfResources<'a> {
-    fn new(altura_extra: f32) -> Self {
-        let page_width = 80.0;
-        let page_height = 169.0 + altura_extra;
-        let (doc, page, layer) =
-            PdfDocument::new("Ticket", Mm(page_width as f32), Mm(page_height as f32), "");
-
-        let font_data: &[u8] = include_bytes!("../assets/fonts/segoe-ui-bold.ttf") as &[u8];
-        let face: Face<'_> = Face::parse(font_data, 0).expect("No se pudo cargar la fuente");
-        let upem: f32 = face.units_per_em() as f32;
-        let font: IndirectFontRef = doc.add_external_font(font_data).expect(
-            "Failed to add external font. Ensure the font data is correct and file path is valid.",
-        );
-
-        let font_ligth_data: &[u8] = include_bytes!("../assets/fonts/segoe-ui.ttf") as &[u8];
-        let face_light: Face<'_> =
-            Face::parse(font_ligth_data, 0).expect("No se pudo cargar la fuente");
-        let upem_light: f32 = face_light.units_per_em() as f32;
-        let font_light: IndirectFontRef = doc.add_external_font(font_ligth_data).expect(
-            "Failed to add external font. Ensure the font data is correct and file path is valid.",
-        );
-
-        PdfResources {
-            font,
-            face,
-            upem,
-            face_light,
-            upem_light,
-            font_light,
-            page_width,
-            page_height,
-            doc,
-            page,
-            layer,
-        }
-    }
-}
-
 fn pdf(orden: &IOrder) {
-    let mut altura_extra: f32  = 0.0;
-    let descuento_monto = 0;
-    
-    if orden.courier.id_courier == -2 {
-        altura_extra += 7.0;
-    }
+    let mut pdf = PdfResources::new();
+    let mut y_actual = 0.;
+    // CUERPO 0: header
 
-    if descuento_monto < 0 {
-        altura_extra += 8.0;
+    // reimpreso:
+    let reimpreso = String::from("*REIMPRESO*");
+    pdf.set_paragraph(&reimpreso, 16.0, 5.0, 70.0, -1, false);
+
+    // comercio nombre
+    let comercio_nombre = orden.comercio.nombre.as_ref().unwrap();
+    y_actual = pdf.set_paragraph(
+        &comercio_nombre,
+        20.0,
+        y_actual + 12.0,
+        70.0,
+        0,
+        false,
+    );
+
+    // plataforma nombre
+    let plataforma_nombre = orden.plataforma.nombre.as_ref().unwrap();
+    y_actual = pdf.set_paragraph(
+        &plataforma_nombre,
+        16.0,
+        y_actual + 0.0,
+        70.0,
+        0,
+        false,
+    );
+    // moto
+    if orden.tipo_entrega.id == 1 {
+        pdf.set_img(5.0, y_actual + 4.0, 10.0, 10.0, "moto");
+    } else {
+        pdf.set_img(
+            5.0,
+            y_actual + 4.0,
+            10.0,
+            10.0,
+            "camino",
+        );
     }
+    // correlativo
+    let correlativo_string = orden.correlativo.to_string();
+    y_actual = pdf.set_paragraph(
+        &correlativo_string,
+        30.0,
+        y_actual + 4.0,
+        70.0,
+        1,
+        false,
+    );
+
+    // nuestro (si es reparto propio)
+    if orden.courier.id_courier == -2 {
+        let nuestro_string = String::from("*NUESTRO*");
+        let nuestro: &String = &nuestro_string;
+        pdf.set_paragraph(
+            &nuestro,
+            16.0,
+            y_actual - 4.0,
+            70.0,
+            -1,
+            false,
+        );
+    }
+    // codigo pedido
+    //       anteponer el # al codigo:
+    let codigo_pedido = String::from("#") + &orden.codigo;
+    pdf.set_paragraph(
+        &codigo_pedido,
+        16.0,
+        y_actual - 4.0,
+        70.0,
+        1,
+        true,
+    );
+
+    // hora salida cociona
+    let salida_cocina =
+        format_datetime(&orden.fechas.fecha_salida_cocina_estimada.as_ref());
+    pdf.set_paragraph(
+        &salida_cocina.1,
+        32.0,
+        y_actual + 5.0,
+        70.0,
+        1,
+        false,
+    );
+
+    // salida cocina
+    let salida_cocina_string = String::from("Salida Cocina");
+    y_actual = pdf.set_paragraph(
+        &salida_cocina_string,
+        12.0,
+        y_actual + 5.0,
+        70.0,
+        -1,
+        true,
+    );
+
+    // Cliente nombre
+    pdf.set_linea(y_actual - 4.0);
+    let cliente_nombre = orden.cliente.nombre.as_ref().unwrap();
+    y_actual = pdf.set_paragraph(
+        &cliente_nombre,
+        24.0,
+        y_actual + 4.0,
+        70.0,
+        0,
+        false,
+    );
+    // ubicacion
+    pdf.set_separacion(y_actual - 8.0, "ubicacion");
+    // si es delivery
+
+    let direccion = if orden.tipo_entrega.id == 1 {
+        orden.drop_off.as_ref().unwrap().direccion.as_ref().unwrap() as &String
+    } else {
+        orden.sucursal.as_ref().unwrap().nombre.as_ref().unwrap() as &String
+    };
+    y_actual = pdf.set_paragraph(
+        &direccion,
+        14.0,
+        y_actual + 5.0,
+        50.0,
+        0,
+        false,
+    );
+    let tipo_entrega = orden
+        .drop_off
+        .as_ref()
+        .unwrap()
+        .tipo_entrega
+        .as_ref()
+        .unwrap();
+    y_actual = pdf.set_paragraph(
+        &tipo_entrega,
+        14.0,
+        y_actual + 3.0,
+        80.0,
+        0,
+        true,
+    );
+
+    // hora pago
+    let static_hora_pago = String::from("Hora de Pago");
+    pdf.set_paragraph(
+        &static_hora_pago,
+        14.0,
+        y_actual + 2.0,
+        70.0,
+        -1,
+        true,
+    );
+    let fecha_pago = format_datetime(&orden.fechas.fecha_pago.as_ref());
+    let str_fecha_entrega = fecha_pago.0 + ". - " + &fecha_pago.1;
+    y_actual = pdf.set_paragraph(
+        &str_fecha_entrega,
+        14.0,
+        y_actual + 2.0,
+        70.0,
+        1,
+        true,
+    );
+    // hora entrega
+    let static_hora_entrega = String::from("Hora de Entrega");
+    pdf.set_paragraph(
+        &static_hora_entrega,
+        14.0,
+        y_actual + 1.0,
+        70.0,
+        -1,
+        true,
+    );
+    let fecha_entrega =
+        format_datetime(&orden.fechas.fecha_entrega_min.as_ref());
+    let str_fecha_entrega = fecha_entrega.0 + ". - " + &fecha_entrega.1;
+    y_actual = pdf.set_paragraph(
+        &str_fecha_entrega,
+        14.0,
+        y_actual + 1.0,
+        70.0,
+        1,
+        true,
+    );
+    let inicio_rect = y_actual - 3.0;
+    // comentario cliente
+    let static_comentario_cliente = String::from(" Comentario del Cliente: ");
+    y_actual = pdf.set_paragraph(
+        &static_comentario_cliente,
+        14.0,
+        y_actual + 2.0,
+        60.0,
+        -2,
+        false,
+    );
+    // agregar comillas dobles al final e inicio del texto
+    let comentario: String =
+        " \"".to_string() + orden.comentario.as_ref().unwrap() + "\"";
+
+    y_actual = pdf.set_paragraph(
+        &comentario,
+        16.0,
+        y_actual + 1.0,
+        68.0,
+        0,
+        true,
+    );
+    pdf.set_rect(inicio_rect, y_actual - 2.0);
+
+    pdf.set_separacion(y_actual, "cubiertos");
+    let mut precio_total = 0;
+    y_actual += 5.0;
+    // CUERPO 2: pedidos
     for item in &orden.items {
-        altura_extra += 6.0;
-        for _i in item.opciones.as_ref().unwrap() {
-            altura_extra += 10.0;
+        pdf.set_paragraph(
+            &(item.cantidad.to_string() + " X " + &item.nombre),
+            13.0,
+            y_actual + 5.0,
+            70.0,
+            -1,
+            false,
+        );
+        let num_precio = (item.precio * item.cantidad) as i32;
+        precio_total += num_precio;
+        let precio = format_clp(num_precio);
+        y_actual = pdf.set_paragraph(
+            &precio,
+            13.0,
+            y_actual + 5.0,
+            70.0,
+            1,
+            false,
+        );
+        for modi in item.opciones.as_ref().unwrap() {
+            y_actual = pdf.set_paragraph(
+                &("- ".to_string() + &modi.modificador),
+                13.0,
+                y_actual + 2.0,
+                70.0,
+                -2,
+                true,
+            );
+            y_actual = pdf.set_paragraph(
+                &("".to_string()
+                    + &modi.cantidad.to_string()
+                    + " X   "
+                    + &modi.opcion),
+                13.0,
+                y_actual + 0.0,
+                70.0,
+                -2,
+                true,
+            );
+        }
+        if item.comentario.as_ref().unwrap() != "" {
+            let ped_inicio_rect = y_actual - 3.0;
+            // comentario cliente
+            let static_comentario_cliente =
+                String::from(" Comentario del Cliente: ");
+            y_actual = pdf.set_paragraph(
+                &static_comentario_cliente,
+                14.0,
+                y_actual + 2.0,
+                60.0,
+                -2,
+                false,
+            );
+            // agregar comillas dobles al final e inicio del texto
+            let ped_comentario: String =
+                " \"".to_string() + item.comentario.as_ref().unwrap() + "\"";
+            y_actual = pdf.set_paragraph(
+                &ped_comentario,
+                16.0,
+                y_actual + 1.0,
+                68.0,
+                0,
+                true,
+            );
+            pdf.set_rect(ped_inicio_rect, y_actual - 2.0);
         }
     }
-    
 
-    let resources = PdfResources::new(altura_extra);
+    // FOOTER: pagos
+    pdf.set_separacion(y_actual, "dinero");
 
-    let current_layer: PdfLayerReference = resources
-        .doc
-        .get_page(resources.page)
-        .get_layer(resources.layer);
+    let descuento_monto: (f32, bool, String) = // bool es si es cupon de gasto envio o no
+        if orden.dscto_cupon_gasto_envio > 0.0 {
+            (
+                orden.dscto_cupon_gasto_envio,
+                true,
+                "Descuento (".to_string()
+                    + &orden.cupones.as_ref().unwrap()[0].codigo
+                    + ")",
+            )
+        } else if orden.dscto_cupon_subtotal > 0.0 {
+            (
+                orden.dscto_cupon_subtotal,
+                false,
+                "Descuento".to_string(),
+            )
+        } else {
+            (
+                orden.dscto_puntos,
+                false,
+                "Puntos".to_string(),
+            )
+        };
 
-    let mut gastos_envio: i32 = 0;
-    // let mut extra = 0.0;
-    /*
-    // CUERPO 0: header
-    fn header(
-        current_layer: &PdfLayerReference,
-        resources: &PdfResources<'_>,
-        orden: &IOrder,
-    ) -> f32 {
-        let mut alto = 0.0;
-        // comercio nombre
-        set_texto(
-            current_layer,
-            24.0,
-            orden.comercio.nombre.as_ref().unwrap(),
-            14.0,
-            resources,
-            0,
-            false,
-        );
+    let descuento_oferta = orden.sub_total - precio_total;
+    let gastos_envio = orden.gastos_envio;
+    let total = orden.sub_total + orden.gastos_envio + descuento_monto.0 as i32;
 
-        // plataforma nombre
-        set_texto(
-            current_layer,
+    y_actual += 8.0;
+    pdf.set_paragraph(
+        &String::from("Subtotal"),
+        16.0,
+        y_actual + 2.0,
+        70.0,
+        -1,
+        true,
+    );
+    let precio_subtotal = format_clp(orden.sub_total);
+    y_actual = pdf.set_paragraph(
+        &precio_subtotal,
+        16.0,
+        y_actual + 2.0,
+        70.0,
+        1,
+        false,
+    );
+
+    if descuento_oferta > 0 {
+        pdf.set_paragraph(
+            &String::from("Descuento Oferta"),
             16.0,
-            orden.plataforma.nombre.as_ref().unwrap(),
-            19.0,
-            resources,
-            0,
+            y_actual + 1.0,
+            70.0,
+            -1,
+            true,
+        );
+        let precio_descuento_oferta = format_clp(descuento_oferta);
+        y_actual = pdf.set_paragraph(
+            &precio_descuento_oferta,
+            16.0,
+            y_actual + 1.0,
+            70.0,
+            1,
             false,
         );
+    }
+    if descuento_monto.0 > 0.0 && !descuento_monto.1 {
+        pdf.set_paragraph(
+            &descuento_monto.2,
+            16.0,
+            y_actual + 1.0,
+            70.0,
+            -1,
+            true,
+        );
+        let precio_descuento_monto = format_clp(descuento_monto.0 as i32);
+        y_actual = pdf.set_paragraph(
+            &precio_descuento_monto,
+            16.0,
+            y_actual + 1.0,
+            70.0,
+            1,
+            false,
+        );
+    }
+    if gastos_envio > 0 {
+        pdf.set_paragraph(
+            &String::from("Despacho"),
+            16.0,
+            y_actual + 1.0,
+            70.0,
+            -1,
+            true,
+        );
+        let precio_gastos_envio = format_clp(gastos_envio);
+        y_actual = pdf.set_paragraph(
+            &precio_gastos_envio,
+            16.0,
+            y_actual + 1.0,
+            70.0,
+            1,
+            false,
+        );
+    }
+    if descuento_monto.0 > 0.0 && descuento_monto.1 {
+        pdf.set_paragraph(
+            &descuento_monto.2,
+            16.0,
+            y_actual + 1.0,
+            70.0,
+            -1,
+            true,
+        );
+        let precio_descuento_monto = format_clp(descuento_monto.0 as i32);
+        y_actual = pdf.set_paragraph(
+            &precio_descuento_monto,
+            16.0,
+            y_actual + 1.0,
+            70.0,
+            1,
+            false,
+        );
+    }
+    pdf.set_paragraph(
+        &String::from("Total"),
+        16.0,
+        y_actual + 1.0,
+        70.0,
+        -1,
+        true,
+    );
+    let precio_total = format_clp(total);
+    y_actual = pdf.set_paragraph(
+        &precio_total,
+        16.0,
+        y_actual + 1.0,
+        70.0,
+        1,
+        false,
+    );
+    // disclaimer
+    let disclaimer =
+        String::from("* Total no incluye propina ni cuota de servicio.");
+    y_actual = pdf.set_paragraph(
+        &disclaimer,
+        9.0,
+        y_actual + 1.0,
+        70.0,
+        -1,
+        true,
+    );
+
+    // medio de pago
+    let medio_pago = orden.pago.medio_pago.nombre.as_ref().unwrap();
+    y_actual = pdf.set_paragraph(
+        &medio_pago,
+        16.0,
+        y_actual + 5.0,
+        70.0,
+        1,
+        false,
+    );
+
+    let power_agil = String::from("powered by Agil");
+    y_actual = pdf.set_paragraph(
+        &power_agil,
+        12.0,
+        y_actual + 2.0,
+        80.0,
+        0,
+        true,
+    );
+
+    // pdf.set_rect(10.0, 20.0);
+    pdf.init_draw();
+    pdf.drow_all_obj();
+    pdf.save_pdf();
+
+    /*
+
 
         set_linea_horizontal(current_layer, 52.0, resources);
 
@@ -249,7 +602,7 @@ fn pdf(orden: &IOrder) {
             // nuestro
             let nuestro_string = String::from("*NUESTRO*");
             let nuestro: &String = &nuestro_string;
-            
+
             set_texto(current_layer, 12.0, nuestro, 45.0, resources, -1, false);
             alto += 8.0;
         }
@@ -292,7 +645,7 @@ fn pdf(orden: &IOrder) {
 
         // reimpreso
 
-        let copia_string = String::from("*REIMPRESO*"); // TODO
+        let copia_string = String::from("*REIMPRESO*");
         let copia: &String = &copia_string;
         set_texto(current_layer, 12.0, copia, 5.0, resources, -1, false);
         alto
@@ -423,9 +776,7 @@ fn pdf(orden: &IOrder) {
             true,
         );
         resources.page_height as f32 - comenetario_co.1 + extra
-    }
 
-    extra += header(&current_layer, &resources, orden);
     let mut altura_nueva = envio(&current_layer, &resources, orden, extra);
 
     set_lineas_verticales(&current_layer, 89.0 + extra, altura_nueva, &resources);
@@ -551,466 +902,103 @@ fn pdf(orden: &IOrder) {
             false,
         );
     }
-    */
-    // Cost subtotal
-    set_texto(
-        &current_layer,
-        16.0,
-        &String::from("Subtotal"),
-        44.0,
-        &resources,
-        -1,
-        true,
-    );
-    let costo_total = format_clp(orden.sub_total as i32);
-    set_texto(
-        &current_layer,
-        16.0,
-        &costo_total,
-        44.0,
-        &resources,
-        1,
-        false,
-    );
-    set_separacion(&resources, &current_layer, 50.0, "dinero");
-    if orden.tipo_entrega.id == 1 {
-        gastos_envio = orden.gastos_envio;
-        let str_gastos_envio = format_clp(gastos_envio);
-        set_texto(
-            &current_layer,
-            16.0,
-            &String::from("Despacho"),
-            37.0,
-            &resources,
-            -1,
-            true,
-        );
-        set_texto(
-            &current_layer,
-            16.0,
-            &str_gastos_envio,
-            37.0,
-            &resources,
-            1,
-            false,
-        );
-    }
-    // costo total
-    set_texto(
-        &current_layer,
-        16.0,
-        &String::from("Total"),
-        30.0,
-        &resources,
-        -1,
-        true,
-    );
-    let costo_total = format_clp(orden.sub_total + gastos_envio + descuento_monto);
-    set_texto(
-        &current_layer,
-        16.0,
-        &costo_total,
-        30.0,
-        &resources,
-        1,
-        false,
-    );
 
-    // no incluye ...
-    let disclaimer = String::from("* Total no incluye propina ni cuota de servicio.");
-    set_texto(
-        &current_layer,
-        9.0,
-        &disclaimer,
-        24.0,
-        &resources,
-        -1,
-        true,
-    );
+    // // Cost subtotal
+    // set_texto(
+    //     &current_layer,
+    //     16.0,
+    //     &String::from("Subtotal"),
+    //     44.0,
+    //     &resources,
+    //     -1,
+    //     true,
+    // );
+    // let costo_total = format_clp(orden.sub_total as i32);
+    // set_texto(
+    //     &current_layer,
+    //     16.0,
+    //     &costo_total,
+    //     44.0,
+    //     &resources,
+    //     1,
+    //     false,
+    // );
+    // set_separacion(&resources, &current_layer, 50.0, "dinero");
+    // if orden.tipo_entrega.id == 1 {
+    //     gastos_envio = orden.gastos_envio;
+    //     let str_gastos_envio = format_clp(gastos_envio);
+    //     set_texto(
+    //         &current_layer,
+    //         16.0,
+    //         &String::from("Despacho"),
+    //         37.0,
+    //         &resources,
+    //         -1,
+    //         true,
+    //     );
+    //     set_texto(
+    //         &current_layer,
+    //         16.0,
+    //         &str_gastos_envio,
+    //         37.0,
+    //         &resources,
+    //         1,
+    //         false,
+    //     );
+    // }
+    // // costo total
+    // set_texto(
+    //     &current_layer,
+    //     16.0,
+    //     &String::from("Total"),
+    //     30.0,
+    //     &resources,
+    //     -1,
+    //     true,
+    // );
+    // let costo_total = format_clp(orden.sub_total + gastos_envio + descuento_monto);
+    // set_texto(
+    //     &current_layer,
+    //     16.0,
+    //     &costo_total,
+    //     30.0,
+    //     &resources,
+    //     1,
+    //     false,
+    // );
 
-    // medio de pago ...
-    let medio_pago = orden.pago.medio_pago.nombre.as_ref().unwrap();
-    set_texto(
-        &current_layer,
-        20.0,
-        medio_pago,
-        17.0,
-        &resources,
-        1,
-        false,
-    );
+    // // no incluye ...
+    // let disclaimer = String::from("* Total no incluye propina ni cuota de servicio.");
+    // set_texto(
+    //     &current_layer,
+    //     9.0,
+    //     &disclaimer,
+    //     24.0,
+    //     &resources,
+    //     -1,
+    //     true,
+    // );
+
+    // // medio de pago ...
+    // let medio_pago = orden.pago.medio_pago.nombre.as_ref().unwrap();
+    // set_texto(
+    //     &current_layer,
+    //     20.0,
+    //     medio_pago,
+    //     17.0,
+    //     &resources,
+    //     1,
+    //     false,
+    // );
 
     // power by agil
-    let power_agil = String::from("powered by Agil");
-    set_texto(
-        &current_layer,
-        12.0,
-        &power_agil,
-        10.0,
-        &resources,
-        0,
-        true,
-    );
 
-    // FIN !
-    let mut buffer: BufWriter<File> = BufWriter::new(File::create("test_working.pdf").unwrap());
-    resources.doc.save(&mut buffer).unwrap();
-}
-
-fn set_separacion(resources: &PdfResources<'_>, current_layer: &PdfLayerReference, y: f32, icono:&str ) {
-    set_linea_horizontal(current_layer, y + 1.5, resources);
-    set_linea_horizontal(current_layer, y + 2.75, resources);
-    let _ = set_img(
-        current_layer,
-        resources,
-        37.0,
-        y - 0.75,
-        6.0,
-        6.0,
-        icono,
-    );
-}
-
-fn format_datetime(iso_date: &str) -> (String, String) {
-    // Parseamos la fecha ISO
-    let datetime = DateTime::parse_from_rfc3339(iso_date).expect("Error parsing ISO date");
-
-    // Formateamos la fecha como "DD MMM"
-    let date = datetime.format("%d %b").to_string();
-
-    // Formateamos la hora como "HH:MM"
-    let time = datetime.format("%H:%M").to_string();
-
-    (date, time)
-}
-
-fn format_clp(amount: i32) -> String {
-    let mut formatted = String::new();
-    let amount_str = amount.to_string();
-    let mut count = 0;
-
-    for ch in amount_str.chars().rev() {
-        if count > 0 && count % 3 == 0 {
-            formatted.push('.');
-        }
-        formatted.push(ch);
-        count += 1;
-    }
-
-    formatted = formatted.chars().rev().collect();
-    format!("${}", formatted)
-}
-
-fn set_linea_horizontal(current_layer: &PdfLayerReference, altura: f32, resources: &PdfResources) {
-    // let i:f32  = (resources.page_height - altura) as f32;
-    let mut i = altura;
-    let y = i as f32;
-    let l = 5.0;
-    let r = 75.0;
-    let points = vec![
-        (Point::new(Mm(l), Mm(y)), false),
-        (Point::new(Mm(l), Mm(y)), false),
-        (Point::new(Mm(r), Mm(y)), false),
-        (Point::new(Mm(r), Mm(y)), false),
-    ];
-
-    let line = Polygon {
-        rings: vec![points],
-        mode: PaintMode::FillStroke,
-        winding_order: WindingOrder::NonZero,
-    };
-    current_layer.add_polygon(line);
-}
-
-fn set_lineas_verticales(
-    current_layer: &PdfLayerReference,
-    inicio: f32,
-    fin: f32,
-    resources: &PdfResources,
-) {
-    let y_inicio = (resources.page_height as f32 - inicio) as f32;
-    let y_fin = (resources.page_height as f32 - fin) as f32;
-    let l = 5.0;
-    let r = 75.0;
-
-    let points_izq = vec![
-        (Point::new(Mm(l), Mm(y_inicio)), false),
-        (Point::new(Mm(l), Mm(y_fin)), false),
-    ];
-
-    let line_izq = Line {
-        points: points_izq,
-        is_closed: false,
-    };
-
-    current_layer.add_line(line_izq);
-
-    let points_der = vec![
-        (Point::new(Mm(r), Mm(y_inicio)), false),
-        (Point::new(Mm(r), Mm(y_fin)), false),
-    ];
-
-    let line_der = Line {
-        points: points_der,
-        is_closed: false,
-    };
-
-    current_layer.add_line(line_der);
-}
-
-fn set_img(
-    current_layer: &PdfLayerReference,
-    resources: &PdfResources,
-    x: f32,
-    y: f32,
-    mm_x: f32,
-    mm_y: f32,
-    icono: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    const DPI: f32 = 300.0;
-
-    // fn mm_to_px(mm: f32) -> usize {
-    //     // There are 25.4 millimeters in an inch.
-    //     let pixels = (mm / 25.4) * DPI;
-    //     // Convert inches to pixels using the specified DPI
-    //     pixels.round() as usize
-    // }
-    fn px_to_mm(px: f32) -> f32 {
-        // There are 25.4 millimeters in an inch.
-        let mm = (px / DPI) * 25.4;
-        mm as f32
-    }
-
-    let path_icono = "assets/img/".to_owned() + icono + ".bmp";
-
-    let mut image_file = File::open(path_icono).unwrap();
-    let img: Image =
-        Image::try_from(image_crate::codecs::bmp::BmpDecoder::new(&mut image_file).unwrap())
-            .unwrap();
-
-    let base_scale_x = px_to_mm(img.image.width.0 as f32);
-    let base_scale_y = px_to_mm(img.image.height.0 as f32);
-
-    // println!("{}[px] X {}[px]", img.image.width.0, img.image.height.0);
-    // println!(" {}[mm] x {}[mm]", base_scale_x, base_scale_y,);
-    // scale_x * base_scale_x = mm_x
-    let scale_x = mm_x / base_scale_x;
-    let scale_y = mm_y / base_scale_y;
-
-    let image_transform: ImageTransform = ImageTransform {
-        translate_x: Some(Mm(x)),
-        translate_y: Some(Mm(y)),
-        rotate: None,
-        scale_x: Some(scale_x),
-        scale_y: Some(scale_y),
-        dpi: Some(DPI), // Usar los nuevos DPI aquí también
-    };
-
-    img.add_to_layer(current_layer.clone(), image_transform);
-
-    Ok(())
-}
-
-/// Dibuja texto en forma de párrafo, con máximo 70mm de ancho por línea.
-fn set_parrafo(
-    current_layer: &PdfLayerReference,
-    font_size: f32,
-    text: &str,
-    altura: f32,
-    resources: &PdfResources,
-    tipo: i8,
-    light: bool,
-) -> (f32, f32) {
-    // 1. Elegir el font correcto (regular o light)
-    let (font_use, face_use, upem_use) = if light {
-        (
-            &resources.font_light,
-            &resources.face_light,
-            resources.upem_light,
-        )
-    } else {
-        (&resources.font, &resources.face, resources.upem)
-    };
-
-    // 2. Calcular factor de escala de la fuente
-    let scale_factor = font_size / upem_use;
-
-    // 3. Máximo ancho en mm permitido para cada línea
-    let max_width_mm = 60.0;
-
-    // 4. Dividir el texto en palabras
-    //    * Podrías hacer un split más robusto si necesitas separar
-    //      saltos de línea, tabuladores, etc.
-    let words: Vec<&str> = text.split_whitespace().collect();
-
-    // 5. Función auxiliar para medir el ancho de una palabra
-    //    en milímetros usando la `face_use`.
-    let measure_word_mm = |w: &str| -> f32 {
-        let width_points: f32 = w
-            .chars()
-            .filter_map(|c| face_use.glyph_index(c))
-            .map(|glyph_id| face_use.glyph_hor_advance(glyph_id).unwrap_or(0) as f32)
-            .sum::<f32>()
-            * scale_factor;
-
-        // Convertir de puntos tipográficos a mm
-        width_points * 0.352778
-    };
-
-    // 6. Construir “líneas” respetando el max_width_mm
-    let mut lines: Vec<String> = Vec::new();
-    let mut current_line = String::new();
-    let mut current_line_width: f32 = 0.0;
-
-    let space_width_mm = measure_word_mm(" "); // ancho de un espacio en mm
-
-    for (i, word) in words.iter().enumerate() {
-        // Medir la palabra
-        let word_width = measure_word_mm(word);
-        let sep = if i == 0 || current_line.is_empty() {
-            "" // si es la primera palabra de la línea, no ponemos espacio
-        } else {
-            " "
-        };
-        let extra_width = if sep.is_empty() { 0.0 } else { space_width_mm };
-
-        // Revisar si cabe la palabra en la línea actual
-        if current_line_width + word_width + extra_width <= max_width_mm {
-            // Cabe en la línea
-            if current_line.is_empty() {
-                current_line = word.to_string();
-            } else {
-                current_line.push_str(sep);
-                current_line.push_str(word);
-            }
-            // Sumar ancho
-            current_line_width += word_width + extra_width;
-        } else {
-            // No cabe en la línea; guardar la línea actual en `lines`,
-            // empezar una nueva con la palabra que no cupo
-            lines.push(current_line);
-            current_line = word.to_string();
-            current_line_width = word_width;
-        }
-    }
-
-    // Agregar la última línea si quedó algo
-    if !current_line.is_empty() {
-        lines.push(current_line);
-    }
-
-    // 7. Ahora dibujamos línea por línea.
-    //
-    //    - Ajustamos la posición X en base a `tipo`:
-    //        tipo < 0 -> alineación izquierda
-    //        tipo = 0 -> alineación centrada
-    //        tipo > 0 -> alineación derecha
-    //
-    //    - El “interlineado” o salto de línea suele ser
-    //      algo como 1.2 * font_size, o un valor fijo.
-    let line_spacing: f32 = font_size * 0.4; // Ajusta a tu gusto
-    let mut y_position: f32 = altura;
-
-
-    // Vamos a devolver la última posición X e Y dibujada.
-    // El “último X” no es tan relevante porque cada línea
-    // puede tener un X distinto. Si quieres solo dejarlo
-    // en 10.0 o en el calculado por la última línea,
-    // eso depende de tu uso.
-    let mut last_x_position: f32 = 10.0;
-    // let mut last_altura = altura;
-
-    for line in &lines {
-        // Medir el ancho de la línea para alinear:
-        let line_width_mm = measure_word_mm(line);
-
-        let x_position = if tipo < 0 {
-            // Izquierda
-            10.0
-        } else if tipo == 0 {
-            // Centrado
-            (resources.page_width as f32 - line_width_mm) / 2.0
-        } else {
-            // Derecha (asumimos que 70mm es el contenedor)
-            60.0 - line_width_mm
-        };
-
-        // Dibuja la línea
-        current_layer.use_text(
-            line, // el texto de la línea
-            font_size as f32,
-            Mm(x_position as f32),
-            Mm(y_position as f32),
-            font_use,
-        );
-
-        last_x_position = x_position;
-
-        // Bajar la posición Y para la siguiente línea
-        // OJO: en tu caso usabas “incrementar tamaño en 7.5”
-        //      quizá lo quieras fijo
-        y_position -= line_spacing;
-        // last_altura += line_spacing;
-        // println!("{}, {}", last_altura, altura);
-    }
-
-    // Devuelve la última posición usada (aprox.)
-
-    (last_x_position, y_position)
-}
-
-fn set_texto(
-    current_layer: &PdfLayerReference,
-    font_size: f32,
-    text: &String,
-    altura: f32,
-    resources: &PdfResources,
-    tipo: i8,
-    light: bool,
-) -> f32 {
-    let mut font_use = resources.font.clone();
-    let mut face_use = resources.face.clone();
-    let mut upem_use = resources.upem.clone();
-    if light {
-        font_use = resources.font_light.clone();
-        face_use = resources.face_light.clone();
-        upem_use = resources.upem_light.clone();
-    }
-
-    let scale_factor = font_size / upem_use;
-
-    let text_width_points: f32 = text
-        .chars()
-        .filter_map(|c| face_use.glyph_index(c))
-        .map(|glyph_id| face_use.glyph_hor_advance(glyph_id).unwrap_or(0) as f32)
-        .sum::<f32>()
-        * scale_factor;
-
-    let text_width_mm: f32 = text_width_points * 0.352778;
-
-    let mut x_position: f32 = 5.0; // left
-    if tipo == 0 {
-        x_position = (resources.page_width as f32 - text_width_mm) / 2.0;
-    } else if tipo > 0 {
-        // right
-        x_position = 75.0 - text_width_mm;
-    }
-
-
-    current_layer.use_text(
-        text,
-        font_size as f32,
-        Mm(x_position as f32),
-        Mm(altura as f32),
-        &font_use,
-    );
-
-    x_position
+    */
 }
 
 fn main() {
     let orden_ejemplo = IOrder {
-        comentario: Some("Orden de ejemplo ".to_string()),
+        comentario: Some("Orden de ejemplo".to_string()),
         items: vec![
             Item {
                 cantidad: 2.0,
@@ -1028,7 +1016,7 @@ fn main() {
                         opcion: "Piña".to_string(),
                     },
                 ]),
-                comentario: Some("Sin aceitunas, por favor".to_string()),
+                comentario: Some("Sin aceitunas, por favor por favor por favor por favor por favor por favor!!!".to_string()),
             },
             Item {
                 cantidad: 5.0,
@@ -1050,7 +1038,7 @@ fn main() {
             fecha_pago: "2024-12-25T14:05:00Z".to_string(),
             tz: "America/Santiago".to_string(),
         },
-        tipo_entrega: TipoEntrega { id: 1}, // 1 = Delivery, 2 = Retiro, etc.
+        tipo_entrega: TipoEntrega { id: 1 }, // 1 = Delivery, 2 = Retiro, etc.
         drop_off: Some(DropOff {
             tipo_entrega: Some("tipo entrega viene como string".to_string()),
             direccion: Some("Av Siemrpe Viva 420, titirilquen".to_string()),
@@ -1058,15 +1046,17 @@ fn main() {
         courier: Courier { id_courier: -2 }, // -2 = Reparto Propio, ejemplo
         cliente: Cliente {
             telefono: Some("+56 9 1234 5678".to_string()),
-            nombre: Some("Juan Pérez".to_string()),
+            nombre: Some("Pablo Diego José Francisco de Paula Juan Nepomuceno María de los Remedios Cipriano de la Santísima Trinidad Ruiz y Picasso".to_string()),
             nro: Some("Depto. 202".to_string()),
         },
-        sucursal: None, // No aplica si es delivery
+        sucursal: Some(Sucursal {
+            nombre: Some("algun lado".to_string()), // No aplica si es delivery
+        }),
         plataforma: Plataforma {
             codigo: Some("AGIL".to_string()),
             nombre: Some("Agil".to_string()),
         },
-        correlativo: 1001,
+        correlativo: 9,
         codigo: "P42069".to_string(),
         comercio: Comercio {
             nombre: Some("La Pizzería".to_string()),
@@ -1085,11 +1075,11 @@ fn main() {
 /*
 
  * Matias del futuro:
- *  recuerda que 
+ *  recuerda que
  *  refactorizando
- *  la creacion del largo de los tickets 
+ *  la creacion del largo de los tickets
  *  para normalizar los tamaños
- * 
+ *
  * cambia los SET de textos cambien el alto final cuando lo realicen se un texto opcional
  * tambien el SET de parrafos cuando se extiendan
  * ademas de modificar los textos dependientes del cambio
@@ -1097,14 +1087,13 @@ fn main() {
 */
 
 // ! Done:
-//  dejarlo como el disclamer como original 
-
+//  dejarlo como el disclamer como original
 
 // ToDo:
 // correlativo Tamaño Salida cocina (bold)
 // saldida cocina subir a hora salida
 // fondo blanco a los iconos mas anchos.
-//      * realizado pero falta modifciar las iamgenes que sean de fonodo 1:1 y una imagen alta en 2:3 
+//      * realizado pero falta modifciar las iamgenes que sean de fonodo 1:1 y una imagen alta en 2:3
 //  mas espacios entre los cambios de segmenteo
 //  comentarios de productos
 //  comillas en cometarios
@@ -1115,6 +1104,6 @@ fn main() {
 // descuentos ofertas :
 //  * descuentos falsos
 // descuentos codigos :
-// - envio (cupon) 
+// - envio (cupon)
 // - cupon
 // - puntos
