@@ -1,10 +1,10 @@
 extern crate printpdf;
-use printpdf::*;
-use std::{convert::From, os::linux::raw::stat};
+
+use std::{convert::From};
 
 mod pdf_resources;
 use pdf_resources::{
-    format_clp, format_datetime, set_linea_horizontal, PdfResources,
+    format_clp, format_datetime, PdfResources,
 };
 
 pub struct IOrder {
@@ -149,16 +149,6 @@ fn pdf(orden: &IOrder) {
             "camino",
         );
     }
-    // correlativo
-    let correlativo_string = orden.correlativo.to_string();
-    y_actual = pdf.set_paragraph(
-        &correlativo_string,
-        30.0,
-        y_actual + 4.0,
-        70.0,
-        1,
-        false,
-    );
 
     // nuestro (si es reparto propio)
     if orden.courier.id_courier == -2 {
@@ -167,23 +157,50 @@ fn pdf(orden: &IOrder) {
         pdf.set_paragraph(
             &nuestro,
             16.0,
-            y_actual - 4.0,
+            y_actual + 10.0,
             70.0,
             -1,
             false,
         );
     }
+    let entrega_programada = true;
+    // correlativo
+    // si es programado entonces se antepone el "P" al codigo
+    let mut correlativo_string = orden.correlativo.to_string();
+    if entrega_programada {
+        correlativo_string.insert(0, 'P');
+        // prgramado
+        let programado_string = String::from("PROGRAMADO");
+        pdf.set_paragraph(
+            &programado_string,
+            16.0,
+            y_actual + 18.0,
+            70.0,
+            -1,
+            false,
+        );
+    }
+
     // codigo pedido
-    //       anteponer el # al codigo:
     let codigo_pedido = String::from("#") + &orden.codigo;
     pdf.set_paragraph(
         &codigo_pedido,
         16.0,
-        y_actual - 4.0,
+        y_actual + 18.0,
         70.0,
         1,
         true,
     );
+    y_actual = pdf.set_paragraph(
+        &correlativo_string,
+        50.0,
+        y_actual + 10.0,
+        70.0,
+        1,
+        false,
+    );
+
+
 
     // hora salida cociona
     let salida_cocina =
@@ -191,7 +208,7 @@ fn pdf(orden: &IOrder) {
     pdf.set_paragraph(
         &salida_cocina.1,
         32.0,
-        y_actual + 5.0,
+        y_actual,
         70.0,
         1,
         false,
@@ -202,12 +219,12 @@ fn pdf(orden: &IOrder) {
     y_actual = pdf.set_paragraph(
         &salida_cocina_string,
         12.0,
-        y_actual + 5.0,
+        y_actual,
         70.0,
         -1,
         true,
     );
-
+    y_actual += 5.0;
     // Cliente nombre
     pdf.set_linea(y_actual - 4.0);
     let cliente_nombre = orden.cliente.nombre.as_ref().unwrap();
@@ -220,9 +237,9 @@ fn pdf(orden: &IOrder) {
         false,
     );
     // ubicacion
-    pdf.set_separacion(y_actual - 8.0, "ubicacion");
+    pdf.set_separacion(y_actual - 4.0, "ubicacion");
     // si es delivery
-
+    y_actual += 4.0;
     let direccion = if orden.tipo_entrega.id == 1 {
         orden.drop_off.as_ref().unwrap().direccion.as_ref().unwrap() as &String
     } else {
@@ -317,7 +334,7 @@ fn pdf(orden: &IOrder) {
         true,
     );
     pdf.set_rect(inicio_rect, y_actual - 2.0);
-
+    y_actual += 2.0;
     pdf.set_separacion(y_actual, "cubiertos");
     let mut precio_total = 0;
     y_actual += 5.0;
@@ -557,7 +574,7 @@ fn pdf(orden: &IOrder) {
     );
 
     let power_agil = String::from("powered by Agil");
-    y_actual = pdf.set_paragraph(
+    pdf.set_paragraph(
         &power_agil,
         12.0,
         y_actual + 2.0,
@@ -566,434 +583,9 @@ fn pdf(orden: &IOrder) {
         true,
     );
 
-    // pdf.set_rect(10.0, 20.0);
     pdf.init_draw();
     pdf.drow_all_obj();
     pdf.save_pdf();
-
-    /*
-
-
-        set_linea_horizontal(current_layer, 52.0, resources);
-
-        // Cliente nombre
-        set_texto(
-            current_layer,
-            24.0,
-            orden.cliente.nombre.as_ref().unwrap(),
-            60.0,
-            resources,
-            0,
-            false,
-        );
-
-        // Cliente Numero
-        if orden.courier.id_courier == -2 {
-            set_texto(
-                current_layer,
-                20.0,
-                orden.cliente.telefono.as_ref().unwrap(),
-                68.0,
-                resources,
-                0,
-                false,
-            );
-
-            // nuestro
-            let nuestro_string = String::from("*NUESTRO*");
-            let nuestro: &String = &nuestro_string;
-
-            set_texto(current_layer, 12.0, nuestro, 45.0, resources, -1, false);
-            alto += 8.0;
-        }
-
-        // CODIGO pedido
-        let codigo_pedido_string = &orden.codigo;
-        let codigo_pedido: &String = &codigo_pedido_string;
-        set_texto(current_layer, 14.0, codigo_pedido, 38.0, resources, 1, true);
-
-        // salida_cocina
-        let salida_cocina_string = String::from("Salida Cocina");
-        let salida_cocina: &String = &salida_cocina_string;
-        set_texto(
-            current_layer,
-            12.0,
-            salida_cocina,
-            50.0,
-            resources,
-            -1,
-            true,
-        );
-
-        // hora salida cociona
-        let salida_cocina = format_datetime(orden.fechas.fecha_salida_cocina_estimada.as_ref());
-        let hora_salida_cocina: &String = &salida_cocina.1;
-        set_texto(
-            current_layer,
-            32.0,
-            hora_salida_cocina,
-            48.0,
-            resources,
-            1,
-            false,
-        );
-        if orden.tipo_entrega.id == 1 {
-            let _ = set_img(current_layer, resources, 5.0, 30.0, 10.0, 10.0, "moto");
-        } else {
-            let _ = set_img(current_layer, resources, 5.0, 30.0, 10.0, 10.0, "camino");
-        }
-
-        // reimpreso
-
-        let copia_string = String::from("*REIMPRESO*");
-        let copia: &String = &copia_string;
-        set_texto(current_layer, 12.0, copia, 5.0, resources, -1, false);
-        alto
-    }
-
-    fn envio(
-        current_layer: &PdfLayerReference,
-        resources: &PdfResources<'_>,
-        orden: &IOrder,
-        extra: f32,
-    ) -> f32 {
-        // CUERPO 1: Envio
-
-        set_linea_horizontal(current_layer, 62.75 + extra, resources);
-        set_linea_horizontal(current_layer, 63.50 + extra, resources);
-
-        // ubicacion
-        let ubicacion: String = orden
-            .drop_off
-            .as_ref()
-            .unwrap()
-            .direccion
-            .clone() // Asegura que dirección es una opción de copia
-            .unwrap_or("".to_string());
-
-        set_parrafo(
-            current_layer,
-            14.0,
-            &ubicacion,
-            69.0 + extra,
-            resources,
-            0,
-            false,
-        );
-        // icono ubicacion
-        let _ = set_img(
-            current_layer,
-            resources,
-            38.0,
-            66.0 + extra as f32,
-            4.0,
-            5.0,
-            "ubicacion",
-        );
-
-        // indicacion
-        let tipo: String = orden
-            .drop_off
-            .as_ref()
-            .unwrap()
-            .tipo_entrega
-            .clone()
-            .unwrap_or("".to_string());
-
-        set_texto(current_layer, 14.0, &tipo, 74.0 + extra, resources, 0, true);
-
-        // hora pago
-        set_texto(
-            current_layer,
-            14.0,
-            &String::from("Hora de Pago"),
-            82.0 + extra,
-            resources,
-            -1,
-            true,
-        );
-
-        let fecha_pago = format_datetime(&orden.fechas.fecha_pago.as_ref());
-        let hora_pago = format!("{}. - {}", fecha_pago.0, fecha_pago.1);
-        set_texto(
-            current_layer,
-            12.0,
-            &hora_pago,
-            82.0 + extra,
-            resources,
-            1,
-            true,
-        );
-
-        // hora entrega
-        set_texto(
-            current_layer,
-            14.0,
-            &String::from("Hora de Entrega"),
-            87.0 + extra,
-            resources,
-            -1,
-            true,
-        );
-
-        let fecha_entrega = format_datetime(&orden.fechas.fecha_entrega_min.as_ref());
-        let hora_entrega = format!("{}. - {}", fecha_entrega.0, fecha_entrega.1);
-        set_texto(
-            current_layer,
-            12.0,
-            &hora_entrega,
-            87.0 + extra,
-            resources,
-            1,
-            true,
-        );
-
-        //   altura  = 95.0,
-        /*
-         Calculo relativo al inicio pero de tamaño variable!!!
-        */
-        // Comentario cliente
-        set_linea_horizontal(&current_layer, 89.0 + extra, &resources);
-        set_texto(
-            &current_layer,
-            12.0,
-            &String::from(" Comentario del Cliente: "),
-            94.0 + extra,
-            &resources,
-            -1,
-            false,
-        );
-
-        let comentario: &String = orden.comentario.as_ref().unwrap();
-
-        let comenetario_co = set_parrafo(
-            &current_layer,
-            10.0,
-            &comentario,
-            99.0 + extra,
-            &resources,
-            -1,
-            true,
-        );
-        resources.page_height as f32 - comenetario_co.1 + extra
-
-    let mut altura_nueva = envio(&current_layer, &resources, orden, extra);
-
-    set_lineas_verticales(&current_layer, 89.0 + extra, altura_nueva, &resources);
-    set_linea_horizontal(&current_layer, altura_nueva, &resources);
-
-    // Cuerpo 2: pedidos
-    // cubiertos
-    set_linea_horizontal(&current_layer, altura_nueva + 5.0, &resources);
-    set_linea_horizontal(&current_layer, altura_nueva + 5.75, &resources);
-
-    altura_nueva = altura_nueva + 8.0;
-    let _ = set_img(
-        &current_layer,
-        &resources,
-        37.0,
-        altura_nueva as f32,
-        6.0,
-        6.0,
-        "cubiertos",
-    );
-    // productos
-    // modificadores
-    for item in &orden.items {
-        altura_nueva = altura_nueva + 5.0;
-        let producto = item.cantidad.to_string() + " X " + &item.nombre;
-        set_texto(
-            &current_layer,
-            13.0,
-            &producto,
-            altura_nueva,
-            &resources,
-            -1,
-            false,
-        );
-        let precio = format_clp((item.precio * item.cantidad) as i32);
-        set_texto(
-            &current_layer,
-            13.0,
-            &precio,
-            altura_nueva,
-            &resources,
-            1,
-            false,
-        );
-        // let ubicacion: String = orden
-        //     .drop_off
-        //     .as_ref()
-        //     .unwrap()
-        //     .direccion
-        //     .clone() // Asegura que dirección es una opción de copia
-        //     .unwrap_or("".to_string());
-
-        // altura_nueva = altura_nueva + 2.0;
-        for modi in item.opciones.as_ref().unwrap() {
-            altura_nueva = altura_nueva + 5.0;
-            let mut text_modi = String::new();
-            text_modi.push_str("   - ");
-            text_modi.push_str(&modi.modificador);
-            set_texto(
-                &current_layer,
-                13.0,
-                &text_modi,
-                altura_nueva,
-                &resources,
-                -1,
-                true,
-            );
-            altura_nueva = altura_nueva + 5.0;
-            text_modi = String::new();
-            text_modi.push_str("     ");
-            text_modi.push_str(&modi.cantidad.to_string());
-            text_modi.push_str(" X   ");
-            text_modi.push_str(&modi.opcion);
-
-            set_texto(
-                &current_layer,
-                13.0,
-                &text_modi,
-                altura_nueva,
-                &resources,
-                -1,
-                true,
-            );
-        }
-
-        // set_linea_horizontal(&current_layer, altura_nueva, &resources); //todo borrar despues
-        // println!("{}", altura_nueva);
-    }
-
-    // FOOTER: pagos
-    /*
-     Calculo relativo al final
-    */
-
-    // descuentos
-    // - 1 puntos
-    // - 2
-    // - 3
-    let descuento_nombre = "PUNTOS?".to_string();
-    // recorrer el objeto, si uno de los 3 descuentos tiene valor ese sera el que se muestra
-    // ya que solo puede usarce un valor por logica de negocio
-
-    // Costo despacho
-    if descuento_monto < 0 {
-        extra_neg = -7.0;
-        let str_descuento_monto = format_clp(descuento_monto);
-        set_texto(
-            &current_layer,
-            16.0,
-            &descuento_nombre,
-            -37.0,
-            &resources,
-            -1,
-            true,
-        );
-        set_texto(
-            &current_layer,
-            16.0,
-            &str_descuento_monto,
-            -37.0,
-            &resources,
-            1,
-            false,
-        );
-    }
-
-    // // Cost subtotal
-    // set_texto(
-    //     &current_layer,
-    //     16.0,
-    //     &String::from("Subtotal"),
-    //     44.0,
-    //     &resources,
-    //     -1,
-    //     true,
-    // );
-    // let costo_total = format_clp(orden.sub_total as i32);
-    // set_texto(
-    //     &current_layer,
-    //     16.0,
-    //     &costo_total,
-    //     44.0,
-    //     &resources,
-    //     1,
-    //     false,
-    // );
-    // set_separacion(&resources, &current_layer, 50.0, "dinero");
-    // if orden.tipo_entrega.id == 1 {
-    //     gastos_envio = orden.gastos_envio;
-    //     let str_gastos_envio = format_clp(gastos_envio);
-    //     set_texto(
-    //         &current_layer,
-    //         16.0,
-    //         &String::from("Despacho"),
-    //         37.0,
-    //         &resources,
-    //         -1,
-    //         true,
-    //     );
-    //     set_texto(
-    //         &current_layer,
-    //         16.0,
-    //         &str_gastos_envio,
-    //         37.0,
-    //         &resources,
-    //         1,
-    //         false,
-    //     );
-    // }
-    // // costo total
-    // set_texto(
-    //     &current_layer,
-    //     16.0,
-    //     &String::from("Total"),
-    //     30.0,
-    //     &resources,
-    //     -1,
-    //     true,
-    // );
-    // let costo_total = format_clp(orden.sub_total + gastos_envio + descuento_monto);
-    // set_texto(
-    //     &current_layer,
-    //     16.0,
-    //     &costo_total,
-    //     30.0,
-    //     &resources,
-    //     1,
-    //     false,
-    // );
-
-    // // no incluye ...
-    // let disclaimer = String::from("* Total no incluye propina ni cuota de servicio.");
-    // set_texto(
-    //     &current_layer,
-    //     9.0,
-    //     &disclaimer,
-    //     24.0,
-    //     &resources,
-    //     -1,
-    //     true,
-    // );
-
-    // // medio de pago ...
-    // let medio_pago = orden.pago.medio_pago.nombre.as_ref().unwrap();
-    // set_texto(
-    //     &current_layer,
-    //     20.0,
-    //     medio_pago,
-    //     17.0,
-    //     &resources,
-    //     1,
-    //     false,
-    // );
-
-    // power by agil
-
-    */
 }
 
 fn main() {

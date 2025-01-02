@@ -1,6 +1,5 @@
 extern crate printpdf;
-use chrono::{DateTime, NaiveDate, TimeZone};        
-use chrono::prelude::*;
+use chrono::{DateTime};
 use printpdf::path::{PaintMode, WindingOrder};
 
 use std::fs::File;
@@ -9,7 +8,7 @@ use std::collections::HashMap;
 use printpdf::*;
 use ttf_parser::Face;
 
-const PAGE_WIDTH: f32 = 80.0;
+// const PAGE_WIDTH: f32 = 80.0;
 const DPI: f32 = 300.0;
 
 pub struct ParagraphData {
@@ -20,12 +19,12 @@ pub struct ParagraphData {
     /// cálculos posteriores (p.ej. para saber dónde empieza el siguiente párrafo).
     ///
     pub y_inicial: f32,
-    pub final_y: f32,
+    // pub final_y: f32,
 }
 
 pub struct ParrafoLine {
     pub text: String,
-    pub width_mm: f32,
+    // pub width_mm: f32,
     pub x_position: f32,
 }
 
@@ -41,7 +40,7 @@ pub struct ImagePreMake {
 
 pub struct CurrentPdf {
     pub doc: PdfDocumentReference,
-    pub page: PdfPageIndex,
+    // pub page: PdfPageIndex,
     pub current_layer: PdfLayerReference,
     pub font_bold: IndirectFontRef,
     pub font_light: IndirectFontRef,
@@ -183,7 +182,7 @@ impl<'a> PdfResources<'a> {
             y_inicial,
             font_size,
             light,
-            final_y,
+            // final_y,
         };
 
         self.paragraphs.push(paragraph_data);
@@ -215,7 +214,7 @@ impl<'a> PdfResources<'a> {
         // Devolvemos la última posición X e Y usada
         // 3. Dibujamos línea a línea
         let mut y_position = y_inicial;
-        let mut last_x_position = 10.0; // o como gustes
+        // let mut last_x_position = 10.0; // o como gustes
 
         // 2. Interlineado
         let line_spacing = font_size * 0.4;
@@ -229,7 +228,7 @@ impl<'a> PdfResources<'a> {
                 font,
             );
 
-            last_x_position = line_info.x_position;
+            // last_x_position = line_info.x_position;
             // Para la siguiente línea, reducimos Y
             y_position -= line_spacing;
         }
@@ -255,7 +254,7 @@ impl<'a> PdfResources<'a> {
             doc.get_page(page).get_layer(layer);
         let pdf = CurrentPdf {
             doc,
-            page,
+            // page,
             current_layer,
             font_bold,
             font_light,
@@ -427,7 +426,7 @@ fn layout_parrafo(
 
         let line_info = ParrafoLine {
             text: line_str.to_string(),
-            width_mm: line_width_mm,
+            // width_mm: line_width_mm,
             x_position,
         };
 
